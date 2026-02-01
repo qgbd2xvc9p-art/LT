@@ -8,6 +8,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:xml/xml.dart';
 
+const String kAppVersion = String.fromEnvironment('APP_VERSION', defaultValue: 'dev');
+
 void main() => runApp(const MyApp());
 
 class MyApp extends StatelessWidget {
@@ -15,6 +17,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final shortVersion = kAppVersion.length > 7 ? kAppVersion.substring(0, 7) : kAppVersion;
     return MaterialApp(
       title: 'Excel 矩阵压缩器',
       theme: ThemeData(
@@ -41,8 +44,12 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final shortVersion = kAppVersion.length > 7 ? kAppVersion.substring(0, 7) : kAppVersion;
     return Scaffold(
-      appBar: AppBar(title: const Text('Excel 智能压缩 (多线程版)'), centerTitle: true),
+      appBar: AppBar(
+        title: Text('Excel 智能压缩 (多线程版) • $shortVersion'),
+        centerTitle: true,
+      ),
       body: Center(
         child: Container(
           constraints: const BoxConstraints(maxWidth: 600),
@@ -70,6 +77,11 @@ class _HomePageState extends State<HomePage> {
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[50]),
                   ),
                 ],
+              ),
+              const SizedBox(height: 24),
+              Text(
+                '版本: $kAppVersion',
+                style: const TextStyle(fontSize: 12, color: Colors.black45),
               ),
             ],
           ),
@@ -134,8 +146,10 @@ class _HomePageState extends State<HomePage> {
       final filename = '压缩报表_${DateTime.now().millisecondsSinceEpoch}.xlsx';
       _downloadBytes(outputBytes, filename);
       setState(() => _status = '处理完成！请查看浏览器下载');
-    } catch (e) {
-      setState(() => _status = '处理失败: $e');
+    } catch (e, st) {
+      js.context.callMethod('console.error', [st.toString()]);
+      final stackLine = st.toString().split('\n').first;
+      setState(() => _status = '处理失败: $e\n$stackLine');
     } finally {
       setState(() => _busy = false);
     }
@@ -226,7 +240,12 @@ XmlDocument _filterCore(XmlDocument doc, int headerRows, List<String> sharedStri
     }
 
     if (isFixed || hasData) {
-      row.setAttribute('r', nextRowIdx.toString());
+      final newRow = XmlElement(
+        row.name.copy(),
+        row.attributes.map((a) => a.copy()),
+        const [],
+      );
+      newRow.setAttribute('r', nextRowIdx.toString());
       rowMap[oldR] = nextRowIdx;
       List<XmlElement> newCells = [];
       for (int i = 0; i < sortedOldCols.length; i++) {
@@ -237,13 +256,13 @@ XmlDocument _filterCore(XmlDocument doc, int headerRows, List<String> sharedStri
               orElse: () => XmlElement(XmlName('null')),
             );
         if (cell.name.local == 'c') {
-          cell.setAttribute('r', '$newCol$nextRowIdx');
-          newCells.add(cell);
+          final newCell = cell.copy();
+          newCell.setAttribute('r', '$newCol$nextRowIdx');
+          newCells.add(newCell);
         }
       }
-      row.children.clear();
-      row.children.addAll(newCells);
-      finalRows.add(row);
+      newRow.children.addAll(newCells);
+      finalRows.add(newRow);
       nextRowIdx++;
     }
   }
@@ -297,11 +316,20 @@ XmlDocument _filterCore(XmlDocument doc, int headerRows, List<String> sharedStri
 
   doc.findAllElements('mergeCells').forEach((e) => e.parent?.children.remove(e));
   if (merges.isNotEmpty) {
-    final builder = XmlBuilder();
-    builder.element('mergeCells', attributes: {'count': merges.length.toString()}, nest: () {
-      for (var r in merges) builder.element('mergeCell', attributes: {'ref': r});
-    });
-    doc.rootElement.children.add(builder.buildFragment());
+    final mergeCells = XmlElement(
+      XmlName('mergeCells', doc.rootElement.name.prefix),
+      [XmlAttribute(XmlName('count'), merges.length.toString())],
+      merges
+          .map(
+            (r) => XmlElement(
+              XmlName('mergeCell', doc.rootElement.name.prefix),
+              [XmlAttribute(XmlName('ref'), r)],
+              const [],
+            ),
+          )
+          .toList(),
+    );
+    doc.rootElement.children.add(mergeCells);
   }
 
   return doc;
