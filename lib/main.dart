@@ -162,12 +162,22 @@ Uint8List _heavyProcessTask(Uint8List bytes) {
 
   final ssFile = _findInArchive(archive, 'xl/sharedStrings.xml');
   final sharedStrings = ssFile == null ? <String>[] : _parseStrings(ssFile.content as List<int>);
+  final stylesFile = _findInArchive(archive, 'xl/styles.xml');
+  XmlDocument? stylesDoc;
+  _StyleManager? styleManager;
+  if (stylesFile != null) {
+    stylesDoc = XmlDocument.parse(utf8.decode(stylesFile.content as List<int>));
+    styleManager = _StyleManager.fromDoc(stylesDoc);
+  }
 
   for (final file in archive) {
     if (file.name.startsWith('xl/worksheets/sheet') && file.name.endsWith('.xml')) {
       final doc = XmlDocument.parse(utf8.decode(file.content as List<int>));
-      final result = _filterCore(doc, 7, sharedStrings);
+      final result = _filterCore(doc, 7, sharedStrings, styleManager);
       final encoded = utf8.encode(result.toXmlString(pretty: false));
+      outArchive.addFile(ArchiveFile(file.name, encoded.length, encoded));
+    } else if (file.name == 'xl/styles.xml' && stylesDoc != null) {
+      final encoded = utf8.encode(stylesDoc.toXmlString(pretty: false));
       outArchive.addFile(ArchiveFile(file.name, encoded.length, encoded));
     } else {
       outArchive.addFile(ArchiveFile(file.name, file.size, file.content as List<int>));
@@ -176,7 +186,12 @@ Uint8List _heavyProcessTask(Uint8List bytes) {
   return Uint8List.fromList(ZipEncoder().encode(outArchive)!);
 }
 
-XmlDocument _filterCore(XmlDocument doc, int headerRows, List<String> sharedStrings) {
+XmlDocument _filterCore(
+  XmlDocument doc,
+  int headerRows,
+  List<String> sharedStrings,
+  _StyleManager? styleManager,
+) {
   final sheetData = doc.findAllElements('sheetData').first;
   final rows = sheetData.findElements('row').toList();
 
@@ -238,6 +253,7 @@ XmlDocument _filterCore(XmlDocument doc, int headerRows, List<String> sharedStri
             );
         if (cell.name.local == 'c') {
           cell.setAttribute('r', '$newCol$nextRowIdx');
+          _applyAccountingFormatIfZero(cell, styleManager);
           newCells.add(cell);
         }
       }
@@ -307,6 +323,19 @@ XmlDocument _filterCore(XmlDocument doc, int headerRows, List<String> sharedStri
   return doc;
 }
 
+void _applyAccountingFormatIfZero(XmlElement cell, _StyleManager? styleManager) {
+  if (styleManager == null) return;
+  final v = cell.getElement('v')?.text;
+  if (v == null) return;
+  final t = cell.getAttribute('t');
+  if (t == 's' || t == 'str' || t == 'inlineStr') return;
+  final n = double.tryParse(v.trim());
+  if (n == null || n.abs() > 0.000001) return;
+  final baseStyleIndex = int.tryParse(cell.getAttribute('s') ?? '') ?? 0;
+  final accountingStyleIndex = styleManager.accountingStyleFor(baseStyleIndex);
+  cell.setAttribute('s', accountingStyleIndex.toString());
+}
+
 bool _isCellValid(XmlElement cell, List<String> ss) {
   final v = cell.getElement('v')?.text;
   if (v == null) return false;
@@ -356,4 +385,146 @@ String _idxToCol(int i) {
     i = (i - r) ~/ 26;
   }
   return c;
+}
+
+class _StyleManager {
+  static const String _accountingFormatCode =
+      '_,* #,##0.00_);_,* (#,##0.00);_,* "-"??_);_(@_)';
+
+  final XmlElement cellXfs;
+  final List<XmlElement> cellXfList;
+  final int accountingNumFmtId;
+  final Map<int, int> _accountingStyleCache = {};
+
+  _StyleManager._(
+    this.cellXfs,
+    this.cellXfList,
+    this.accountingNumFmtId,
+  );
+
+  factory _StyleManager.fromDoc(XmlDocument doc) {
+    final styleSheet = doc.rootElement;
+    final numFmts = _ensureNumFmts(styleSheet);
+    final accountingNumFmtId = _ensureAccountingNumFmt(numFmts);
+    final cellXfs = _ensureCellXfs(styleSheet);
+    final cellXfList = cellXfs.findElements('xf').toList();
+    if (cellXfList.isEmpty) {
+      final defaultXf = XmlElement(
+        _nsName(cellXfs, 'xf'),
+        [
+          XmlAttribute(XmlName('numFmtId'), '0'),
+          XmlAttribute(XmlName('fontId'), '0'),
+          XmlAttribute(XmlName('fillId'), '0'),
+          XmlAttribute(XmlName('borderId'), '0'),
+          XmlAttribute(XmlName('xfId'), '0'),
+        ],
+      );
+      cellXfs.children.add(defaultXf);
+      cellXfList.add(defaultXf);
+      cellXfs.setAttribute('count', cellXfList.length.toString());
+    }
+    return _StyleManager._(cellXfs, cellXfList, accountingNumFmtId);
+  }
+
+  int accountingStyleFor(int baseStyleIndex) {
+    final normalized = (baseStyleIndex >= 0 && baseStyleIndex < cellXfList.length)
+        ? baseStyleIndex
+        : 0;
+    final cached = _accountingStyleCache[normalized];
+    if (cached != null) return cached;
+
+    final baseXf = cellXfList[normalized];
+    final newXf = _cloneElement(baseXf);
+    newXf.setAttribute('numFmtId', accountingNumFmtId.toString());
+    newXf.setAttribute('applyNumberFormat', '1');
+    cellXfs.children.add(newXf);
+    cellXfList.add(newXf);
+    final newIndex = cellXfList.length - 1;
+    cellXfs.setAttribute('count', cellXfList.length.toString());
+    _accountingStyleCache[normalized] = newIndex;
+    return newIndex;
+  }
+
+  static XmlElement _ensureNumFmts(XmlElement styleSheet) {
+    final existing = styleSheet.getElement('numFmts');
+    if (existing != null) return existing;
+    final nsName = _nsName(styleSheet, 'numFmts');
+    final numFmts = XmlElement(
+      nsName,
+      [XmlAttribute(XmlName('count'), '0')],
+    );
+    final children = styleSheet.children;
+    int insertIndex = children.indexWhere(
+      (node) => node is XmlElement && node.name.local == 'fonts',
+    );
+    if (insertIndex == -1) insertIndex = children.length;
+    children.insert(insertIndex, numFmts);
+    return numFmts;
+  }
+
+  static int _ensureAccountingNumFmt(XmlElement numFmts) {
+    int maxId = 163;
+    for (final numFmt in numFmts.findElements('numFmt')) {
+      final formatCode = numFmt.getAttribute('formatCode');
+      final id = int.tryParse(numFmt.getAttribute('numFmtId') ?? '') ?? 0;
+      if (id > maxId) maxId = id;
+      if (formatCode == _accountingFormatCode) {
+        return id;
+      }
+    }
+    final newId = maxId + 1;
+    final newNumFmt = XmlElement(
+      _nsName(numFmts, 'numFmt'),
+      [
+        XmlAttribute(XmlName('numFmtId'), newId.toString()),
+        XmlAttribute(XmlName('formatCode'), _accountingFormatCode),
+      ],
+    );
+    numFmts.children.add(newNumFmt);
+    numFmts.setAttribute('count', numFmts.findElements('numFmt').length.toString());
+    return newId;
+  }
+
+  static XmlElement _ensureCellXfs(XmlElement styleSheet) {
+    final existing = styleSheet.getElement('cellXfs');
+    if (existing != null) return existing;
+    final nsName = _nsName(styleSheet, 'cellXfs');
+    final cellXfs = XmlElement(
+      nsName,
+      [XmlAttribute(XmlName('count'), '1')],
+      [
+        XmlElement(
+          _nsName(styleSheet, 'xf'),
+          [
+            XmlAttribute(XmlName('numFmtId'), '0'),
+            XmlAttribute(XmlName('fontId'), '0'),
+            XmlAttribute(XmlName('fillId'), '0'),
+            XmlAttribute(XmlName('borderId'), '0'),
+            XmlAttribute(XmlName('xfId'), '0'),
+          ],
+        ),
+      ],
+    );
+    final children = styleSheet.children;
+    int insertIndex = children.indexWhere(
+      (node) => node is XmlElement && node.name.local == 'cellStyles',
+    );
+    if (insertIndex == -1) insertIndex = children.length;
+    children.insert(insertIndex, cellXfs);
+    return cellXfs;
+  }
+
+  static XmlElement _cloneElement(XmlElement element) {
+    final attributes =
+        element.attributes.map((a) => XmlAttribute(a.name, a.value)).toList();
+    final children = element.children
+        .whereType<XmlElement>()
+        .map(_cloneElement)
+        .toList();
+    return XmlElement(element.name, attributes, children);
+  }
+
+  static XmlName _nsName(XmlElement parent, String local) {
+    return XmlName(local, parent.name.prefix, parent.name.namespaceUri);
+  }
 }
