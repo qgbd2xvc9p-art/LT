@@ -226,12 +226,17 @@ Uint8List _heavyProcessTask(Uint8List bytes) {
       final result = _filterCore(doc, 7, sharedStrings, styleManager);
       final encoded = utf8.encode(result.toXmlString(pretty: false));
       outArchive.addFile(ArchiveFile(file.name, encoded.length, encoded));
-    } else if (file.name == 'xl/styles.xml' && stylesDoc != null) {
-      final encoded = utf8.encode(stylesDoc.toXmlString(pretty: false));
-      outArchive.addFile(ArchiveFile(file.name, encoded.length, encoded));
+    } else if (file.name == 'xl/styles.xml') {
+      continue;
     } else {
       outArchive.addFile(ArchiveFile(file.name, file.size, file.content as List<int>));
     }
+  }
+  if (stylesDoc != null) {
+    final encoded = utf8.encode(stylesDoc.toXmlString(pretty: false));
+    outArchive.addFile(ArchiveFile('xl/styles.xml', encoded.length, encoded));
+  } else if (stylesFile != null) {
+    outArchive.addFile(ArchiveFile(stylesFile.name, stylesFile.size, stylesFile.content as List<int>));
   }
   return Uint8List.fromList(ZipEncoder().encode(outArchive)!);
 }
