@@ -502,7 +502,7 @@ String _idxToCol(int i) {
 
 class _StyleManager {
   static const String _accountingFormatCode =
-      '_,* #,##0.00_);_,* (#,##0.00);_,* "-"??_);_(@_)';
+      '#,##0.00;(#,##0.00);"-";@';
 
   final XmlElement cellXfs;
   final List<XmlElement> cellXfList;
