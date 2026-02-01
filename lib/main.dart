@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:js' as js;
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -7,6 +6,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:xml/xml.dart';
+
+import 'platform_actions.dart';
 
 const String kAppVersion = String.fromEnvironment('APP_VERSION', defaultValue: 'dev');
 
@@ -78,11 +79,13 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              TextButton(
-                onPressed: _clearCacheAndReload,
-                child: const Text('清理缓存并重载'),
-              ),
+              if (kIsWeb) ...[
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: _clearCacheAndReload,
+                  child: const Text('清理缓存并重载'),
+                ),
+              ],
               const SizedBox(height: 24),
               Text(
                 '版本: $kAppVersion',
@@ -149,10 +152,9 @@ class _HomePageState extends State<HomePage> {
     try {
       final outputBytes = await compute(_heavyProcessTask, _fileBytes!);
       final filename = '压缩报表_${DateTime.now().millisecondsSinceEpoch}.xlsx';
-      _downloadBytes(outputBytes, filename);
+      await downloadBytes(outputBytes, filename);
       setState(() => _status = '处理完成！请查看浏览器下载');
     } catch (e, st) {
-      js.context.callMethod('console.error', [st.toString()]);
       final stackLine = st.toString().split('\n').first;
       setState(() => _status = '处理失败: $e\n$stackLine');
     } finally {
@@ -160,48 +162,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void _clearCacheAndReload() {
-    js.context.callMethod('eval', [
-      """
-      (function(){
-        var finish = function(){ location.reload(); };
-        try {
-          if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(function(regs){
-              return Promise.all(regs.map(function(r){ return r.unregister(); }));
-            }).then(function(){
-              if (window.caches) {
-                return caches.keys().then(function(keys){
-                  return Promise.all(keys.map(function(k){ return caches.delete(k); }));
-                });
-              }
-            }).finally(finish);
-          } else if (window.caches) {
-            caches.keys().then(function(keys){
-              return Promise.all(keys.map(function(k){ return caches.delete(k); }));
-            }).finally(finish);
-          } else {
-            finish();
-          }
-        } catch (e) {
-          finish();
-        }
-      })();
-      """
-    ]);
-  }
-}
-
-void _downloadBytes(Uint8List bytes, String filename) {
-  final b64 = base64Encode(bytes);
-  js.context.callMethod('eval', [
-    """
-    var a = document.createElement('a');
-    a.href = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,$b64';
-    a.download = '$filename';
-    a.click();
-    """
-  ]);
+  Future<void> _clearCacheAndReload() => clearWebCacheAndReload();
 }
 
 // --- 后台线程处理逻辑 (Top-level Functions) ---
