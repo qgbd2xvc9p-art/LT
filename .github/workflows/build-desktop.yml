@@ -6,6 +6,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     name: Build Windows (Fmm)
@@ -71,3 +74,21 @@ jobs:
         with:
           name: Fmm-macos
           path: Fmm-macos.zip
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-macos]
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: desktop-${{ github.run_number }}
+          name: Desktop build ${{ github.run_number }}
+          files: |
+            artifacts/Fmm-windows/Fmm-windows.zip
+            artifacts/Fmm-macos/Fmm-macos.zip
