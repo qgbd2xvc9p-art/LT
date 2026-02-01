@@ -10,8 +10,6 @@ import 'package:xml/xml.dart';
 
 void main() => runApp(const MyApp());
 
-const String kAppVersion = String.fromEnvironment('APP_VERSION', defaultValue: 'dev');
-
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -72,11 +70,6 @@ class _HomePageState extends State<HomePage> {
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[50]),
                   ),
                 ],
-              ),
-              const SizedBox(height: 24),
-              Text(
-                '版本: $kAppVersion',
-                style: const TextStyle(fontSize: 12, color: Colors.black45),
               ),
             ],
           ),

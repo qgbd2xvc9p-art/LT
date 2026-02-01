@@ -16,4 +16,4 @@ export PATH="$FLUTTER_HOME/bin:$PATH"
 flutter --version
 flutter config --enable-web
 flutter pub get
-flutter build web --pwa-strategy=none --dart-define=APP_VERSION="${COMMIT_REF:-local}"
+flutter build web
