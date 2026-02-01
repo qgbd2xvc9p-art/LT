@@ -29,7 +29,7 @@ jobs:
       - name: Package Windows zip
         shell: pwsh
         run: |
-          $releaseDir = "build/windows/runner/Release"
+          $releaseDir = "build/windows/x64/runner/Release"
           if (!(Test-Path $releaseDir)) { throw "Release dir not found: $releaseDir" }
           $exePath = Join-Path $releaseDir "excel_filter_app.exe"
           if (!(Test-Path $exePath)) { throw "Expected exe not found: $exePath" }
