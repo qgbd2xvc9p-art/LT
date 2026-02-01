@@ -43,12 +43,8 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final shortVersion = kAppVersion.length > 7 ? kAppVersion.substring(0, 7) : kAppVersion;
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Excel 智能压缩 (多线程版) • $shortVersion'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('Excel 智能压缩 (多线程版)'), centerTitle: true),
       body: Center(
         child: Container(
           constraints: const BoxConstraints(maxWidth: 600),
@@ -145,10 +141,8 @@ class _HomePageState extends State<HomePage> {
       final filename = '压缩报表_${DateTime.now().millisecondsSinceEpoch}.xlsx';
       _downloadBytes(outputBytes, filename);
       setState(() => _status = '处理完成！请查看浏览器下载');
-    } catch (e, st) {
-      js.context.callMethod('console.error', [st.toString()]);
-      final stackLine = st.toString().split('\n').first;
-      setState(() => _status = '处理失败: $e\n$stackLine');
+    } catch (e) {
+      setState(() => _status = '处理失败: $e');
     } finally {
       setState(() => _busy = false);
     }
@@ -330,8 +324,7 @@ XmlDocument _filterCore(
     builder.element('mergeCells', attributes: {'count': merges.length.toString()}, nest: () {
       for (var r in merges) builder.element('mergeCell', attributes: {'ref': r});
     });
-    final fragment = builder.buildFragment();
-    doc.rootElement.children.add(fragment.copy());
+    doc.rootElement.children.add(builder.buildFragment());
   }
 
   return doc;
@@ -589,6 +582,6 @@ XmlElement _cloneElement(XmlElement element) {
 void _replaceChildren(XmlElement parent, List<XmlElement> nodes) {
   parent.children.clear();
   for (final node in nodes) {
-    parent.children.add(node.copy());
+    parent.children.add(node.hasParent ? node.copy() : node);
   }
 }
