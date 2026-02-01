@@ -252,10 +252,9 @@ XmlDocument _filterCore(
               orElse: () => XmlElement(XmlName('null')),
             );
         if (cell.name.local == 'c') {
-          final newCell = _cloneElement(cell);
-          newCell.setAttribute('r', '$newCol$nextRowIdx');
-          _applyAccountingFormatIfZero(newCell, sharedStrings, styleManager);
-          newCells.add(newCell);
+          cell.setAttribute('r', '$newCol$nextRowIdx');
+          _applyAccountingFormatIfZero(cell, sharedStrings, styleManager);
+          newCells.add(cell);
         }
       }
       row.children.clear();
@@ -483,8 +482,8 @@ class _StyleManager {
     final cached = _accountingStyleCache[normalized];
     if (cached != null) return cached;
 
-  final baseXf = cellXfList[normalized];
-  final newXf = _cloneElement(baseXf);
+    final baseXf = cellXfList[normalized];
+    final newXf = _cloneElement(baseXf);
     newXf.setAttribute('numFmtId', accountingNumFmtId.toString());
     newXf.setAttribute('applyNumberFormat', '1');
     cellXfs.children.add(newXf);
@@ -564,11 +563,17 @@ class _StyleManager {
     return cellXfs;
   }
 
+  static XmlElement _cloneElement(XmlElement element) {
+    final attributes =
+        element.attributes.map((a) => XmlAttribute(a.name, a.value)).toList();
+    final children = element.children
+        .whereType<XmlElement>()
+        .map(_cloneElement)
+        .toList();
+    return XmlElement(element.name, attributes, children);
+  }
+
   static XmlName _nsName(XmlElement parent, String local) {
     return XmlName(local, parent.name.prefix);
   }
-}
-
-XmlElement _cloneElement(XmlElement element) {
-  return element.copy();
 }
