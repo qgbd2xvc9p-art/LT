@@ -259,15 +259,13 @@ XmlDocument _filterCore(
           newCells.add(newCell);
         }
       }
-      newRow.children.clear();
-      newRow.children.addAll(newCells);
+      _replaceChildren(newRow, newCells);
       finalRows.add(newRow);
       nextRowIdx++;
     }
   }
 
-  sheetData.children.clear();
-  sheetData.children.addAll(finalRows);
+  _replaceChildren(sheetData, finalRows);
 
   List<String> merges = [];
 
@@ -572,4 +570,11 @@ class _StyleManager {
 
 XmlElement _cloneElement(XmlElement element) {
   return element.copy();
+}
+
+void _replaceChildren(XmlElement parent, List<XmlElement> nodes) {
+  parent.children.clear();
+  for (final node in nodes) {
+    parent.children.add(node.hasParent ? node.copy() : node);
+  }
 }
