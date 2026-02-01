@@ -525,6 +525,6 @@ class _StyleManager {
   }
 
   static XmlName _nsName(XmlElement parent, String local) {
-    return XmlName(local, parent.name.prefix, parent.name.namespaceUri);
+    return XmlName(local, parent.name.prefix);
   }
 }
