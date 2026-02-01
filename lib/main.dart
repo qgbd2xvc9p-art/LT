@@ -241,7 +241,8 @@ XmlDocument _filterCore(
     }
 
     if (isFixed || hasData) {
-      row.setAttribute('r', nextRowIdx.toString());
+      final newRow = _cloneElement(row);
+      newRow.setAttribute('r', nextRowIdx.toString());
       rowMap[oldR] = nextRowIdx;
       List<XmlElement> newCells = [];
       for (int i = 0; i < sortedOldCols.length; i++) {
@@ -258,9 +259,9 @@ XmlDocument _filterCore(
           newCells.add(newCell);
         }
       }
-      row.children.clear();
-      row.children.addAll(newCells);
-      finalRows.add(row);
+      newRow.children.clear();
+      newRow.children.addAll(newCells);
+      finalRows.add(newRow);
       nextRowIdx++;
     }
   }
