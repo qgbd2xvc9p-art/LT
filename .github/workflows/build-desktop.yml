@@ -1,0 +1,73 @@
+name: Build Desktop Apps
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-windows:
+    name: Build Windows (Fmm)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.38.8"
+          channel: "stable"
+          cache: true
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+      - name: Get dependencies
+        run: flutter pub get
+      - name: Build Windows
+        run: flutter build windows --release
+      - name: Package Windows zip
+        shell: pwsh
+        run: |
+          $releaseDir = "build/windows/runner/Release"
+          if (!(Test-Path $releaseDir)) { throw "Release dir not found: $releaseDir" }
+          $exePath = Join-Path $releaseDir "excel_filter_app.exe"
+          if (!(Test-Path $exePath)) { throw "Expected exe not found: $exePath" }
+          Copy-Item $exePath (Join-Path $releaseDir "Fmm.exe") -Force
+          $zipPath = "Fmm-windows.zip"
+          if (Test-Path $zipPath) { Remove-Item $zipPath }
+          Compress-Archive -Path "$releaseDir/*" -DestinationPath $zipPath
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fmm-windows
+          path: Fmm-windows.zip
+
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.38.8"
+          channel: "stable"
+          cache: true
+      - name: Enable macOS desktop
+        run: flutter config --enable-macos-desktop
+      - name: Get dependencies
+        run: flutter pub get
+      - name: Build macOS
+        run: flutter build macos --release
+      - name: Package macOS zip
+        run: |
+          set -euo pipefail
+          app_dir="build/macos/Build/Products/Release"
+          app_name="excel_filter_app.app"
+          if [ ! -d "$app_dir/$app_name" ]; then
+            echo "App not found: $app_dir/$app_name"
+            exit 1
+          fi
+          zip -r "Fmm-macos.zip" "$app_dir/$app_name"
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fmm-macos
+          path: Fmm-macos.zip
