@@ -253,7 +253,7 @@ XmlDocument _filterCore(
             );
         if (cell.name.local == 'c') {
           cell.setAttribute('r', '$newCol$nextRowIdx');
-          _applyAccountingFormatIfZero(cell, sharedStrings, styleManager);
+          _applyAccountingFormatIfZero(cell, styleManager);
           newCells.add(cell);
         }
       }
@@ -323,66 +323,17 @@ XmlDocument _filterCore(
   return doc;
 }
 
-void _applyAccountingFormatIfZero(
-  XmlElement cell,
-  List<String> sharedStrings,
-  _StyleManager? styleManager,
-) {
+void _applyAccountingFormatIfZero(XmlElement cell, _StyleManager? styleManager) {
   if (styleManager == null) return;
+  final v = cell.getElement('v')?.text;
+  if (v == null) return;
   final t = cell.getAttribute('t');
-  final parsed = _parseCellNumericValue(cell, t, sharedStrings);
-  if (parsed == null) return;
-  final n = parsed.$1;
-  final wasString = parsed.$2;
+  if (t == 's' || t == 'str' || t == 'inlineStr') return;
+  final n = double.tryParse(v.trim());
   if (n == null || n.abs() > 0.000001) return;
-  if (wasString) {
-    _convertCellToNumericZero(cell);
-  }
   final baseStyleIndex = int.tryParse(cell.getAttribute('s') ?? '') ?? 0;
   final accountingStyleIndex = styleManager.accountingStyleFor(baseStyleIndex);
   cell.setAttribute('s', accountingStyleIndex.toString());
-}
-
-(double?, bool)? _parseCellNumericValue(
-  XmlElement cell,
-  String? t,
-  List<String> sharedStrings,
-) {
-  if (t == 's') {
-    final v = cell.getElement('v')?.text;
-    if (v == null) return null;
-    final idx = int.tryParse(v);
-    if (idx == null || idx < 0 || idx >= sharedStrings.length) return null;
-    return (double.tryParse(sharedStrings[idx].trim()), true);
-  }
-  if (t == 'inlineStr') {
-    final text = cell
-        .findElements('is')
-        .expand((e) => e.findElements('t'))
-        .map((e) => e.text)
-        .join();
-    if (text.isEmpty) return null;
-    return (double.tryParse(text.trim()), true);
-  }
-  final v = cell.getElement('v')?.text;
-  if (v == null) return null;
-  if (t == 'str') {
-    return (double.tryParse(v.trim()), true);
-  }
-  return (double.tryParse(v.trim()), false);
-}
-
-void _convertCellToNumericZero(XmlElement cell) {
-  cell.attributes.removeWhere((a) => a.name.local == 't');
-  cell.children.removeWhere((node) => node is XmlElement && node.name.local == 'is');
-  var value = cell.getElement('v');
-  if (value == null) {
-    value = XmlElement(_StyleManager._nsName(cell, 'v'));
-    cell.children.add(value);
-  }
-  value.children
-    ..clear()
-    ..add(XmlText('0'));
 }
 
 bool _isCellValid(XmlElement cell, List<String> ss) {
