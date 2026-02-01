@@ -205,6 +205,8 @@ XmlDocument _filterCore(
   List<String> sharedStrings,
   _StyleManager? styleManager,
 ) {
+  var debugStep = 'start';
+  try {
   final sheetData = doc.findAllElements('sheetData').first;
   final rows = sheetData.findElements('row').toList();
 
@@ -272,12 +274,14 @@ XmlDocument _filterCore(
           newCells.add(newCell);
         }
       }
+      debugStep = 'replace row children';
       _replaceChildren(newRow, newCells);
       finalRows.add(newRow);
       nextRowIdx++;
     }
   }
 
+  debugStep = 'replace sheetData';
   _replaceChildren(sheetData, finalRows);
 
   List<String> merges = [];
@@ -324,6 +328,7 @@ XmlDocument _filterCore(
     }
   }
 
+  debugStep = 'remove mergeCells';
   doc.findAllElements('mergeCells').forEach((e) => e.parent?.children.remove(e));
   if (merges.isNotEmpty) {
     final builder = XmlBuilder();
@@ -331,10 +336,14 @@ XmlDocument _filterCore(
       for (var r in merges) builder.element('mergeCell', attributes: {'ref': r});
     });
     final fragment = builder.buildFragment();
+    debugStep = 'add mergeCells';
     doc.rootElement.children.add(fragment.copy());
   }
 
   return doc;
+  } catch (e, st) {
+    throw Exception('[$debugStep] $e\n$st');
+  }
 }
 
 void _applyAccountingFormatIfZero(
@@ -589,6 +598,18 @@ XmlElement _cloneElement(XmlElement element) {
 void _replaceChildren(XmlElement parent, List<XmlElement> nodes) {
   parent.children.clear();
   for (final node in nodes) {
-    parent.children.add(node.copy());
+    _detachFromParent(node);
+    parent.children.add(node);
+  }
+}
+
+void _detachFromParent(XmlNode node) {
+  final parent = node.parent;
+  if (parent is XmlElement) {
+    parent.children.remove(node);
+  } else if (parent is XmlDocument) {
+    parent.children.remove(node);
+  } else if (parent is XmlDocumentFragment) {
+    parent.children.remove(node);
   }
 }
